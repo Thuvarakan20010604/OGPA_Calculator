@@ -325,8 +325,18 @@ class OGPAHome extends StatefulWidget {
 class _OGPAHomeState extends State<OGPAHome> {
   // Logic constants
   final Map<String, double> gradePoints = const {
-    'A+': 4.0, 'A': 4.0, 'A-': 3.7, 'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-    'C+': 2.3, 'C': 2.0, 'C-': 1.7, 'D+': 1.3, 'D': 1.0, 'E': 0.0,
+    'A+': 4.0,
+    'A': 4.0,
+    'A-': 3.7,
+    'B+': 3.3,
+    'B': 3.0,
+    'B-': 2.7,
+    'C+': 2.3,
+    'C': 2.0,
+    'C-': 1.7,
+    'D+': 1.3,
+    'D': 1.0,
+    'E': 0.0,
   };
 
   // Levels[0] = Level 1 ... Levels[3] = Level 4
@@ -338,6 +348,9 @@ class _OGPAHomeState extends State<OGPAHome> {
     Color(0xFFF59E0B), // Amber
     Color(0xFFEC4899), // Pink
   ];
+
+  /// Whether Level 1 is included in OGPA and total credits (default: false).
+  bool includeLevel1InOGPA = false;
 
   @override
   void initState() {
@@ -357,6 +370,7 @@ class _OGPAHomeState extends State<OGPAHome> {
   }
 
   String get _subjectsKey => 'subjects_${widget.name}';
+  String get _includeL1Key => 'include_level1_in_ogpa_${widget.name}';
 
   /* --- DATA LOGIC --- */
 
@@ -364,7 +378,9 @@ class _OGPAHomeState extends State<OGPAHome> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonString = prefs.getString(_subjectsKey);
+      final bool storedInclude = prefs.getBool(_includeL1Key) ?? false;
 
+      // clear old controllers
       for (var level in levels) {
         for (var subject in level) {
           (subject['nameController'] as TextEditingController).dispose();
@@ -372,6 +388,8 @@ class _OGPAHomeState extends State<OGPAHome> {
         }
         level.clear();
       }
+
+      includeLevel1InOGPA = storedInclude;
 
       if (jsonString == null) {
         setState(() {});
@@ -419,6 +437,11 @@ class _OGPAHomeState extends State<OGPAHome> {
     await prefs.setString(_subjectsKey, jsonEncode(allSubjects));
   }
 
+  Future<void> _saveIncludeLevel1Pref() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_includeL1Key, includeLevel1InOGPA);
+  }
+
   Future<void> _saveOrUpdateSubject(
       int levelIndex, Map<String, dynamic> subject) async {
     if ((subject['name'] ?? '').toString().trim().isEmpty) return;
@@ -429,7 +452,7 @@ class _OGPAHomeState extends State<OGPAHome> {
     subject['id'] ??= DateTime.now().millisecondsSinceEpoch.toString();
 
     await _saveAllSubjectsToLocal();
-    setState(() {}); 
+    setState(() {});
   }
 
   Future<void> _deleteSubject(int level, int index) async {
@@ -438,7 +461,8 @@ class _OGPAHomeState extends State<OGPAHome> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Delete subject?'),
-            content: Text('Remove "${subject['name']}" from Level ${level + 1}?'),
+            content:
+                Text('Remove "${subject['name']}" from Level ${level + 1}?'),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -487,10 +511,14 @@ class _OGPAHomeState extends State<OGPAHome> {
     return totalCredits == 0 ? 0 : totalPoints / totalCredits;
   }
 
+  // Uses includeLevel1InOGPA flag
   double _overallOGPA() {
     double totalCredits = 0;
     double totalPoints = 0;
-    for (int level = 1; level < levels.length; level++) {
+
+    final int startLevel = includeLevel1InOGPA ? 0 : 1;
+
+    for (int level = startLevel; level < levels.length; level++) {
       for (var subject in levels[level]) {
         final double credits = subject['credits'];
         final double gradePoint = gradePoints[subject['grade']] ?? 0;
@@ -501,9 +529,13 @@ class _OGPAHomeState extends State<OGPAHome> {
     return totalCredits == 0 ? 0 : totalPoints / totalCredits;
   }
 
+  // Uses includeLevel1InOGPA flag
   double _totalCreditsEarned() {
     double credits = 0;
-    for (int level = 1; level < levels.length; level++) {
+
+    final int startLevel = includeLevel1InOGPA ? 0 : 1;
+
+    for (int level = startLevel; level < levels.length; level++) {
       for (var s in levels[level]) {
         credits += s['credits'];
       }
@@ -645,7 +677,7 @@ class _OGPAHomeState extends State<OGPAHome> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Content Column for badges
                 Wrap(
                   direction: Axis.vertical,
@@ -653,7 +685,8 @@ class _OGPAHomeState extends State<OGPAHome> {
                   children: [
                     // Class Status Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: cs.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -675,10 +708,11 @@ class _OGPAHomeState extends State<OGPAHome> {
                         ],
                       ),
                     ),
-                    
-                    // Credits Badge (Restored as earlier)
+
+                    // Credits Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: cs.surface.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(12),
@@ -686,7 +720,7 @@ class _OGPAHomeState extends State<OGPAHome> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.bar_chart_rounded, 
+                          Icon(Icons.bar_chart_rounded,
                               size: 18, color: cs.onSurface.withOpacity(0.7)),
                           const SizedBox(width: 8),
                           Text(
@@ -705,7 +739,7 @@ class _OGPAHomeState extends State<OGPAHome> {
               ],
             ),
           ),
-          
+
           const SizedBox(width: 16),
 
           // Right Side: Circular Indicator with OGPA inside
@@ -773,13 +807,16 @@ class _OGPAHomeState extends State<OGPAHome> {
       icon = Icons.star_rounded;
     } else if (ogpa >= 3.3) {
       pointsNeeded = ((3.7 - ogpa) * credits).clamp(0, double.infinity);
-      nextText = 'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for First Class.';
+      nextText =
+          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for First Class.';
     } else if (ogpa >= 3.0) {
       pointsNeeded = ((3.3 - ogpa) * credits).clamp(0, double.infinity);
-      nextText = 'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Upper.';
+      nextText =
+          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Upper.';
     } else {
       pointsNeeded = ((3.0 - ogpa) * credits).clamp(0, double.infinity);
-      nextText = 'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Lower.';
+      nextText =
+          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Lower.';
     }
 
     return Container(
@@ -820,7 +857,8 @@ class _OGPAHomeState extends State<OGPAHome> {
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             initiallyExpanded: levelIndex == 0 && subjects.isEmpty,
-            tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             // Leading: Level Label (e.g., L1)
             leading: Container(
               padding: const EdgeInsets.all(10),
@@ -838,21 +876,55 @@ class _OGPAHomeState extends State<OGPAHome> {
               'Level ${levelIndex + 1}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            // Subtitle: Simple context text
+            // Subtitle logic: Level 1 shows message only when excluded
             subtitle: Text(
               levelIndex == 0
-                  ? 'Not counted in final OGPA'
+                  ? (includeLevel1InOGPA
+                      ? '${subjects.length} Subject(s)'
+                      : 'Not counted in final OGPA')
                   : '${subjects.length} Subject(s)',
               style: TextStyle(
-                color: levelIndex == 0 ? cs.outline : cs.onSurfaceVariant,
+                color: levelIndex == 0 && !includeLevel1InOGPA
+                    ? cs.outline
+                    : cs.onSurfaceVariant,
                 fontSize: 13,
               ),
             ),
-            // Trailing: Circular Loading Indicator for this specific level
+            // Trailing: Circular GPA indicator for this level
             trailing: _buildLevelGpaIndicator(gpa, cs),
             childrenPadding:
                 const EdgeInsets.only(left: 16, right: 16, bottom: 16),
             children: [
+              // Toggle row only for Level 1
+              if (levelIndex == 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Include Level 1 GPA in final OGPA',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: includeLevel1InOGPA,
+                        onChanged: (value) async {
+                          setState(() {
+                            includeLevel1InOGPA = value;
+                          });
+                          await _saveIncludeLevel1Pref();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
               if (subjects.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(20),
@@ -865,9 +937,10 @@ class _OGPAHomeState extends State<OGPAHome> {
                 )
               else
                 ...subjects.asMap().entries.map((entry) {
-                  return _buildSubjectRow(levelIndex, entry.key, entry.value);
+                  return _buildSubjectRow(
+                      levelIndex, entry.key, entry.value);
                 }),
-              
+
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
@@ -893,10 +966,15 @@ class _OGPAHomeState extends State<OGPAHome> {
   Widget _buildLevelGpaIndicator(double gpa, ColorScheme cs) {
     // Determine color based on standard GPA cutoffs
     Color color;
-    if (gpa >= 3.7) color = const Color(0xFF10B981); // Green
-    else if (gpa >= 3.0) color = const Color(0xFFF59E0B); // Amber
-    else if (gpa >= 2.0) color = const Color(0xFFF97316); // Orange
-    else color = const Color(0xFFEF4444); // Red
+    if (gpa >= 3.7) {
+      color = const Color(0xFF10B981); // Green
+    } else if (gpa >= 3.0) {
+      color = const Color(0xFFF59E0B); // Amber
+    } else if (gpa >= 2.0) {
+      color = const Color(0xFFF97316); // Orange
+    } else {
+      color = const Color(0xFFEF4444); // Red
+    }
 
     // Value between 0.0 and 1.0 (assuming max GPA is 4.0)
     final double value = (gpa / 4.0).clamp(0.0, 1.0);
@@ -927,7 +1005,8 @@ class _OGPAHomeState extends State<OGPAHome> {
     );
   }
 
-  Widget _buildSubjectRow(int levelIndex, int index, Map<String, dynamic> subject) {
+  Widget _buildSubjectRow(
+      int levelIndex, int index, Map<String, dynamic> subject) {
     final bool isEditing = subject['isEditing'] == true;
 
     return AnimatedSwitcher(
@@ -939,16 +1018,22 @@ class _OGPAHomeState extends State<OGPAHome> {
   }
 
   // --- View Mode Widget (Clean List Tile) ---
-  Widget _buildViewSubjectMode(int level, int index, Map<String, dynamic> subject) {
+  Widget _buildViewSubjectMode(
+      int level, int index, Map<String, dynamic> subject) {
     final cs = Theme.of(context).colorScheme;
     final grade = subject['grade'] as String;
-    
+
     // Determine grade color
     Color gradeColor = cs.primary;
-    if (grade.startsWith('A')) gradeColor = const Color(0xFF10B981);
-    else if (grade.startsWith('B')) gradeColor = const Color(0xFF3B82F6);
-    else if (grade.startsWith('C')) gradeColor = const Color(0xFFF59E0B);
-    else gradeColor = const Color(0xFFEF4444);
+    if (grade.startsWith('A')) {
+      gradeColor = const Color(0xFF10B981);
+    } else if (grade.startsWith('B')) {
+      gradeColor = const Color(0xFF3B82F6);
+    } else if (grade.startsWith('C')) {
+      gradeColor = const Color(0xFFF59E0B);
+    } else {
+      gradeColor = const Color(0xFFEF4444);
+    }
 
     return Container(
       key: ValueKey('view_${subject['id']}'),
@@ -966,17 +1051,20 @@ class _OGPAHomeState extends State<OGPAHome> {
               children: [
                 Text(
                   subject['name'],
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 Text(
                   '${subject['credits']} Credits',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  style: TextStyle(
+                      fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: gradeColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
@@ -1002,21 +1090,26 @@ class _OGPAHomeState extends State<OGPAHome> {
                     controller.open();
                   }
                 },
-                icon: Icon(Icons.more_vert, size: 20, color: cs.outline),
+                icon: Icon(Icons.more_vert,
+                    size: 20, color: cs.outline),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               );
             },
             menuChildren: [
               MenuItemButton(
-                onPressed: () => setState(() => subject['isEditing'] = true),
-                leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () =>
+                    setState(() => subject['isEditing'] = true),
+                leadingIcon:
+                    const Icon(Icons.edit_outlined, size: 18),
                 child: const Text('Edit'),
               ),
               MenuItemButton(
                 onPressed: () => _deleteSubject(level, index),
-                leadingIcon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                leadingIcon: const Icon(Icons.delete_outline,
+                    size: 18, color: Colors.red),
+                child: const Text('Delete',
+                    style: TextStyle(color: Colors.red)),
               ),
             ],
           ),
@@ -1026,7 +1119,8 @@ class _OGPAHomeState extends State<OGPAHome> {
   }
 
   // --- Edit Mode Widget (Form) ---
-  Widget _buildEditSubjectMode(int level, int index, Map<String, dynamic> subject) {
+  Widget _buildEditSubjectMode(
+      int level, int index, Map<String, dynamic> subject) {
     final cs = Theme.of(context).colorScheme;
     return Container(
       key: ValueKey('edit_${subject['id']}'),
@@ -1035,7 +1129,8 @@ class _OGPAHomeState extends State<OGPAHome> {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withOpacity(0.3), width: 1.5),
+        border: Border.all(
+            color: cs.primary.withOpacity(0.3), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: cs.shadow.withOpacity(0.05),
@@ -1064,13 +1159,15 @@ class _OGPAHomeState extends State<OGPAHome> {
                 flex: 3,
                 child: TextField(
                   controller: subject['creditsController'],
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                     labelText: 'Credits',
                     prefixIcon: Icon(Icons.numbers, size: 20),
                     isDense: true,
                   ),
-                  onChanged: (val) => subject['credits'] = double.tryParse(val) ?? 0,
+                  onChanged: (val) =>
+                      subject['credits'] = double.tryParse(val) ?? 0,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1081,13 +1178,15 @@ class _OGPAHomeState extends State<OGPAHome> {
                   isDense: true,
                   decoration: const InputDecoration(
                     labelText: 'Grade',
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     isDense: true,
                   ),
                   items: gradePoints.keys.map((g) {
                     return DropdownMenuItem(value: g, child: Text(g));
                   }).toList(),
-                  onChanged: (val) => setState(() => subject['grade'] = val),
+                  onChanged: (val) =>
+                      setState(() => subject['grade'] = val),
                 ),
               ),
             ],
@@ -1098,20 +1197,23 @@ class _OGPAHomeState extends State<OGPAHome> {
             children: [
               TextButton(
                 onPressed: () {
-                   // If it's a new empty subject (no name), delete it on cancel
-                   if (subject['id'] == null && (subject['name'] == '' || subject['name'] == null)) {
-                     _deleteSubject(level, index);
-                   } else {
-                     setState(() => subject['isEditing'] = false);
-                   }
+                  // If it's a new empty subject (no name), delete it on cancel
+                  if (subject['id'] == null &&
+                      (subject['name'] == '' ||
+                          subject['name'] == null)) {
+                    _deleteSubject(level, index);
+                  } else {
+                    setState(
+                        () => subject['isEditing'] = false);
+                  }
                 },
                 child: const Text('Cancel'),
               ),
               const SizedBox(width: 8),
               FilledButton.icon(
                 onPressed: () async {
-                   setState(() => subject['isEditing'] = false);
-                   await _saveOrUpdateSubject(level, subject);
+                  setState(() => subject['isEditing'] = false);
+                  await _saveOrUpdateSubject(level, subject);
                 },
                 icon: const Icon(Icons.check, size: 18),
                 label: const Text('Save'),
