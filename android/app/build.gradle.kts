@@ -17,7 +17,7 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.example.ogpa_calculator"
+    namespace = "com.thuvarakan.ogpacalc"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -32,7 +32,7 @@ android {
 
     defaultConfig {
         // TODO: Change this to your own unique Application ID.
-        applicationId = "com.example.ogpa_calculator"
+        applicationId = "com.thuvarakan.ogpacalc"
 
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion

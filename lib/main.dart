@@ -1,11 +1,17 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Set transparent status bar for a cleaner look
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -42,49 +48,37 @@ class _OGPAAppState extends State<OGPAApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Modern Indigo Seed Scheme
     final lightScheme = ColorScheme.fromSeed(
       seedColor: Colors.indigo,
       brightness: Brightness.light,
-      surface: const Color(0xFFF8F9FC), // Slightly off-white background
+      surface: const Color(0xFFF8F9FC),
     );
+
     final darkScheme = ColorScheme.fromSeed(
       seedColor: Colors.indigo,
       brightness: Brightness.dark,
       surface: const Color(0xFF121212),
     );
 
-    // Common Input Decoration helper
     InputDecorationTheme inputDeco(ColorScheme cs) => InputDecorationTheme(
           filled: true,
-          fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+          fillColor: cs.surfaceContainerHighest.withOpacity(0.35),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: cs.outline.withOpacity(0.2)),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: cs.outline.withOpacity(0.16)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(color: cs.primary, width: 2),
           ),
           contentPadding:
               const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
           labelStyle: TextStyle(color: cs.onSurfaceVariant),
         );
-
-    if (!_prefsLoaded) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: lightScheme.surface,
-          body: Center(
-              child: CircularProgressIndicator(color: lightScheme.primary)),
-        ),
-      );
-    }
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -108,23 +102,12 @@ class _OGPAAppState extends State<OGPAApp> {
         cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: lightScheme.outline.withOpacity(0.1)),
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: lightScheme.outline.withOpacity(0.08)),
           ),
           clipBehavior: Clip.antiAlias,
         ),
         inputDecorationTheme: inputDeco(lightScheme),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            textStyle:
-                const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-        ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
@@ -142,29 +125,28 @@ class _OGPAAppState extends State<OGPAApp> {
         ),
         cardTheme: CardThemeData(
           elevation: 0,
-          color: const Color(0xFF1E1F25),
+          color: const Color(0xFF1B1C22),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: darkScheme.outline.withOpacity(0.1)),
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: darkScheme.outline.withOpacity(0.08)),
           ),
         ),
         inputDecorationTheme: inputDeco(darkScheme),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
       ),
-      home: savedUser != null ? OGPAHome(name: savedUser!) : const NamePage(),
+      home: !_prefsLoaded
+          ? Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: lightScheme.primary),
+              ),
+            )
+          : savedUser != null
+              ? OGPAHome(name: savedUser!)
+              : const NamePage(),
     );
   }
 }
 
-/* ---------------- NAME PAGE (ONBOARDING) ---------------- */
+/* ---------------- NAME PAGE ---------------- */
 
 class NamePage extends StatefulWidget {
   const NamePage({super.key});
@@ -185,7 +167,7 @@ class _NamePageState extends State<NamePage>
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 850),
     );
 
     _fadeAnimation = CurvedAnimation(
@@ -194,12 +176,14 @@ class _NamePageState extends State<NamePage>
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.1),
+      begin: const Offset(0, 0.08),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutQuart,
-    ));
+    ).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
     _animController.forward();
   }
@@ -233,17 +217,24 @@ class _NamePageState extends State<NamePage>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Hero Icon
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.school_rounded,
-                        size: 48,
-                        color: cs.primary,
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.92, end: 1.0),
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeOutBack,
+                      builder: (context, value, child) {
+                        return Transform.scale(scale: value, child: child);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.school_rounded,
+                          size: 52,
+                          color: cs.primary,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -257,16 +248,15 @@ class _NamePageState extends State<NamePage>
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Track your semester grades and visualize your academic progress.',
+                      'Track your semester GPA, weighted level OGPA, and export your results professionally.',
                       style: tt.bodyLarge?.copyWith(
                         color: cs.onSurfaceVariant,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 40),
-                    // Input Card
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 400),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -282,6 +272,12 @@ class _NamePageState extends State<NamePage>
                           ),
                           const SizedBox(height: 20),
                           FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
                             onPressed: () async {
                               final name = nameCtrl.text.trim();
                               if (name.isEmpty) return;
@@ -311,7 +307,7 @@ class _NamePageState extends State<NamePage>
   }
 }
 
-/* ---------------- DASHBOARD HOME ---------------- */
+/* ---------------- HOME ---------------- */
 
 class OGPAHome extends StatefulWidget {
   final String name;
@@ -322,8 +318,8 @@ class OGPAHome extends StatefulWidget {
   State<OGPAHome> createState() => _OGPAHomeState();
 }
 
-class _OGPAHomeState extends State<OGPAHome> {
-  // Logic constants
+class _OGPAHomeState extends State<OGPAHome>
+    with SingleTickerProviderStateMixin {
   final Map<String, double> gradePoints = const {
     'A+': 4.0,
     'A': 4.0,
@@ -339,22 +335,35 @@ class _OGPAHomeState extends State<OGPAHome> {
     'E': 0.0,
   };
 
-  // Levels[0] = Level 1 ... Levels[3] = Level 4
   final List<List<Map<String, dynamic>>> levels = List.generate(4, (_) => []);
 
   final List<Color> levelColors = const [
-    Color(0xFF6366F1), // Indigo
-    Color(0xFF10B981), // Emerald
-    Color(0xFFF59E0B), // Amber
-    Color(0xFFEC4899), // Pink
+    Color(0xFF6366F1),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFFEC4899),
   ];
 
-  /// Whether Level 1 is included in OGPA and total credits (default: false).
-  bool includeLevel1InOGPA = false;
+  List<bool> includeLevelsInOgpa = [true, true, true, true];
+  bool useLevelWeights = true;
+  List<double> levelWeights = [1.0, 1.0, 1.0, 1.0];
+  late List<TextEditingController> weightControllers;
+  late AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
+
+    weightControllers = List.generate(
+      4,
+      (_) => TextEditingController(text: '1.00'),
+    );
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
     _loadSubjectsFromLocal();
   }
 
@@ -366,21 +375,46 @@ class _OGPAHomeState extends State<OGPAHome> {
         (subject['creditsController'] as TextEditingController).dispose();
       }
     }
+    for (final controller in weightControllers) {
+      controller.dispose();
+    }
+    _pulseController.dispose();
     super.dispose();
   }
 
   String get _subjectsKey => 'subjects_${widget.name}';
-  String get _includeL1Key => 'include_level1_in_ogpa_${widget.name}';
-
-  /* --- DATA LOGIC --- */
+  String get _includeLevelsKey => 'include_levels_in_ogpa_${widget.name}';
+  String get _useWeightsKey => 'use_level_weights_${widget.name}';
+  String get _weightsKey => 'level_weights_${widget.name}';
 
   Future<void> _loadSubjectsFromLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonString = prefs.getString(_subjectsKey);
-      final bool storedInclude = prefs.getBool(_includeL1Key) ?? false;
+      final storedInclude = prefs.getStringList(_includeLevelsKey);
+      final storedWeights = prefs.getStringList(_weightsKey);
+      final storedUseWeights = prefs.getBool(_useWeightsKey);
 
-      // clear old controllers
+      if (storedInclude != null && storedInclude.length == 4) {
+        includeLevelsInOgpa =
+            storedInclude.map((e) => e.toLowerCase() == 'true').toList();
+      }
+
+      if (storedWeights != null && storedWeights.length == 4) {
+        levelWeights = storedWeights
+            .map((e) => double.tryParse(e) ?? 1.0)
+            .map((e) => e <= 0 ? 1.0 : e)
+            .toList(growable: false);
+      }
+
+      if (storedUseWeights != null) {
+        useLevelWeights = storedUseWeights;
+      }
+
+      for (int i = 0; i < 4; i++) {
+        weightControllers[i].text = _formatWeight(levelWeights[i]);
+      }
+
       for (var level in levels) {
         for (var subject in level) {
           (subject['nameController'] as TextEditingController).dispose();
@@ -389,40 +423,44 @@ class _OGPAHomeState extends State<OGPAHome> {
         level.clear();
       }
 
-      includeLevel1InOGPA = storedInclude;
+      if (jsonString != null) {
+        final List<dynamic> decoded = jsonDecode(jsonString);
 
-      if (jsonString == null) {
-        setState(() {});
-        return;
+        for (var row in decoded) {
+          final int storedLevel = (row['level'] ?? 1);
+          final int levelIndex = (storedLevel - 1).clamp(0, 3);
+
+          levels[levelIndex].add({
+            'id': row['id'],
+            'name': row['name'],
+            'credits': (row['credits'] as num).toDouble(),
+            'grade': row['grade'],
+            'isEditing': false,
+            'nameController': TextEditingController(text: row['name']),
+            'creditsController':
+                TextEditingController(text: row['credits'].toString()),
+            'level': storedLevel,
+          });
+        }
       }
 
-      final List<dynamic> decoded = jsonDecode(jsonString);
-
-      for (var row in decoded) {
-        final int mongoLevel = (row['level'] ?? 1);
-        final int levelIndex = ((mongoLevel - 1).clamp(0, 3)) as int;
-
-        levels[levelIndex].add({
-          'id': row['id'],
-          'name': row['name'],
-          'credits': (row['credits'] as num).toDouble(),
-          'grade': row['grade'],
-          'isEditing': false,
-          'nameController': TextEditingController(text: row['name']),
-          'creditsController':
-              TextEditingController(text: row['credits'].toString()),
-          'level': mongoLevel,
-        });
-      }
-      setState(() {});
+      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Load subjects error: $e');
     }
   }
 
+  String _formatWeight(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(1);
+    }
+    return value.toStringAsFixed(2);
+  }
+
   Future<void> _saveAllSubjectsToLocal() async {
     final prefs = await SharedPreferences.getInstance();
     final List<Map<String, dynamic>> allSubjects = [];
+
     for (int levelIndex = 0; levelIndex < levels.length; levelIndex++) {
       for (var subject in levels[levelIndex]) {
         allSubjects.add({
@@ -434,16 +472,27 @@ class _OGPAHomeState extends State<OGPAHome> {
         });
       }
     }
+
     await prefs.setString(_subjectsKey, jsonEncode(allSubjects));
   }
 
-  Future<void> _saveIncludeLevel1Pref() async {
+  Future<void> _saveOgpaPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_includeL1Key, includeLevel1InOGPA);
+    await prefs.setStringList(
+      _includeLevelsKey,
+      includeLevelsInOgpa.map((e) => e.toString()).toList(),
+    );
+    await prefs.setBool(_useWeightsKey, useLevelWeights);
+    await prefs.setStringList(
+      _weightsKey,
+      levelWeights.map((e) => e.toString()).toList(),
+    );
   }
 
   Future<void> _saveOrUpdateSubject(
-      int levelIndex, Map<String, dynamic> subject) async {
+    int levelIndex,
+    Map<String, dynamic> subject,
+  ) async {
     if ((subject['name'] ?? '').toString().trim().isEmpty) return;
 
     int actualLevel = subject['level'] ?? (levelIndex + 1);
@@ -452,12 +501,12 @@ class _OGPAHomeState extends State<OGPAHome> {
     subject['id'] ??= DateTime.now().millisecondsSinceEpoch.toString();
 
     await _saveAllSubjectsToLocal();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _deleteSubject(int level, int index) async {
     final subject = levels[level][index];
-    bool confirmed = await showDialog(
+    final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Delete subject?'),
@@ -465,11 +514,13 @@ class _OGPAHomeState extends State<OGPAHome> {
                 Text('Remove "${subject['name']}" from Level ${level + 1}?'),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
               FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Delete')),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
             ],
           ),
         ) ??
@@ -480,7 +531,9 @@ class _OGPAHomeState extends State<OGPAHome> {
     (subject['nameController'] as TextEditingController).dispose();
     (subject['creditsController'] as TextEditingController).dispose();
 
-    setState(() => levels[level].removeAt(index));
+    setState(() {
+      levels[level].removeAt(index);
+    });
     await _saveAllSubjectsToLocal();
   }
 
@@ -499,45 +552,100 @@ class _OGPAHomeState extends State<OGPAHome> {
     });
   }
 
-  /* --- GPA CALCULATION LOGIC --- */
+  Future<void> _handleWeightChanged(int levelIndex, String rawValue) async {
+    final cleaned = rawValue.trim();
+
+    if (cleaned.isEmpty || cleaned == '.') {
+      setState(() {
+        levelWeights[levelIndex] = 1.0;
+      });
+      await _saveOgpaPrefs();
+      return;
+    }
+
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed <= 0) {
+      return;
+    }
+
+    setState(() {
+      levelWeights[levelIndex] = parsed;
+    });
+
+    await _saveOgpaPrefs();
+  }
+
+  Future<void> _normalizeWeightField(int levelIndex) async {
+    final current = double.tryParse(weightControllers[levelIndex].text.trim());
+    final safeValue = (current == null || current <= 0) ? 1.0 : current;
+
+    setState(() {
+      levelWeights[levelIndex] = safeValue;
+      weightControllers[levelIndex].text = _formatWeight(safeValue);
+      weightControllers[levelIndex].selection = TextSelection.fromPosition(
+        TextPosition(offset: weightControllers[levelIndex].text.length),
+      );
+    });
+
+    await _saveOgpaPrefs();
+  }
 
   double _levelGPA(int level) {
     double totalCredits = 0;
     double totalPoints = 0;
+
     for (var s in levels[level]) {
-      totalCredits += s['credits'];
-      totalPoints += s['credits'] * (gradePoints[s['grade']] ?? 0.0);
+      final double credits = (s['credits'] as num?)?.toDouble() ?? 0.0;
+      totalCredits += credits;
+      totalPoints += credits * (gradePoints[s['grade']] ?? 0.0);
     }
+
     return totalCredits == 0 ? 0 : totalPoints / totalCredits;
   }
 
-  // Uses includeLevel1InOGPA flag
   double _overallOGPA() {
+    if (useLevelWeights) {
+      double weightedTotal = 0;
+      double totalWeights = 0;
+
+      for (int level = 0; level < levels.length; level++) {
+        if (!includeLevelsInOgpa[level]) continue;
+        if (levels[level].isEmpty) continue;
+
+        final double gpa = _levelGPA(level);
+        final double weight =
+            levelWeights[level] <= 0 ? 1.0 : levelWeights[level];
+
+        weightedTotal += gpa * weight;
+        totalWeights += weight;
+      }
+
+      return totalWeights == 0 ? 0 : weightedTotal / totalWeights;
+    }
+
     double totalCredits = 0;
     double totalPoints = 0;
 
-    final int startLevel = includeLevel1InOGPA ? 0 : 1;
+    for (int level = 0; level < levels.length; level++) {
+      if (!includeLevelsInOgpa[level]) continue;
 
-    for (int level = startLevel; level < levels.length; level++) {
       for (var subject in levels[level]) {
-        final double credits = subject['credits'];
-        final double gradePoint = gradePoints[subject['grade']] ?? 0;
+        final double credits = (subject['credits'] as num?)?.toDouble() ?? 0.0;
+        final double gradePoint = gradePoints[subject['grade']] ?? 0.0;
         totalCredits += credits;
         totalPoints += credits * gradePoint;
       }
     }
+
     return totalCredits == 0 ? 0 : totalPoints / totalCredits;
   }
 
-  // Uses includeLevel1InOGPA flag
   double _totalCreditsEarned() {
     double credits = 0;
-
-    final int startLevel = includeLevel1InOGPA ? 0 : 1;
-
-    for (int level = startLevel; level < levels.length; level++) {
+    for (int level = 0; level < levels.length; level++) {
+      if (!includeLevelsInOgpa[level]) continue;
       for (var s in levels[level]) {
-        credits += s['credits'];
+        credits += (s['credits'] as num?)?.toDouble() ?? 0.0;
       }
     }
     return credits;
@@ -549,6 +657,14 @@ class _OGPAHomeState extends State<OGPAHome> {
     if (ogpa >= 3.0) return 'Second Lower';
     if (ogpa == 0) return 'No Data';
     return 'General Pass';
+  }
+
+  String _funStatus(double ogpa) {
+    if (ogpa >= 3.7) return '🔥 Superstar Mode';
+    if (ogpa >= 3.3) return '🚀 Flying High';
+    if (ogpa >= 3.0) return '✨ Good Momentum';
+    if (ogpa > 0) return '💪 Keep Pushing';
+    return '📚 Start Adding Subjects';
   }
 
   Color _classColor(double ogpa) {
@@ -569,7 +685,248 @@ class _OGPAHomeState extends State<OGPAHome> {
     );
   }
 
-  /* ---------------- UI BUILD ---------------- */
+  String _modeLabel() {
+    return useLevelWeights ? 'Weighted Level GPA' : 'Credit Weighted';
+  }
+
+  Map<String, dynamic> _buildBackupMap() {
+    final ogpa = _overallOGPA();
+
+    return {
+      'app': 'OGPA Calculator',
+      'user': widget.name,
+      'generatedAt': DateTime.now().toIso8601String(),
+      'calculationMode':
+          useLevelWeights ? 'weighted_level_gpa' : 'credit_weighted',
+      'includeLevelsInOgpa': includeLevelsInOgpa,
+      'levelWeights': levelWeights,
+      'overallOgpa': ogpa,
+      'classLabel': _classLabel(ogpa),
+      'levels': List.generate(4, (levelIndex) {
+        return {
+          'level': levelIndex + 1,
+          'includedInOgpa': includeLevelsInOgpa[levelIndex],
+          'weight': levelWeights[levelIndex],
+          'gpa': _levelGPA(levelIndex),
+          'subjects': levels[levelIndex].map((subject) {
+            return {
+              'id': subject['id'],
+              'name': subject['name'],
+              'credits': subject['credits'],
+              'grade': subject['grade'],
+            };
+          }).toList(),
+        };
+      }),
+    };
+  }
+
+  Future<String> _saveBackupJsonLocally() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(
+      '${dir.path}/ogpa_backup_${widget.name}_${DateTime.now().millisecondsSinceEpoch}.json',
+    );
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(_buildBackupMap()),
+    );
+    return file.path;
+  }
+
+  Future<Uint8List> _generatePdfBytes() async {
+    final pdf = pw.Document();
+    final ogpa = _overallOGPA();
+    final totalCredits = _totalCreditsEarned();
+    final generated = DateTime.now();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) => [
+          pw.Text(
+            'OGPA Result Summary',
+            style: pw.TextStyle(
+              fontSize: 24,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text('Student: ${widget.name}'),
+          pw.Text('Generated: ${generated.toLocal()}'),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey400),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('Overall OGPA: ${ogpa.toStringAsFixed(2)}'),
+                pw.Text('Academic Standing: ${_classLabel(ogpa)}'),
+                pw.Text(
+                    'Total Credits Counted: ${totalCredits.toStringAsFixed(1)}'),
+                pw.Text('Calculation Mode: ${_modeLabel()}'),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 18),
+          ...List.generate(4, (levelIndex) {
+            final gpa = _levelGPA(levelIndex);
+            final subjects = levels[levelIndex];
+
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  color: PdfColors.grey200,
+                  child: pw.Text(
+                    'Level ${levelIndex + 1} | GPA: ${gpa.toStringAsFixed(2)} | Included: ${includeLevelsInOgpa[levelIndex] ? "Yes" : "No"} | Weight: ${levelWeights[levelIndex].toStringAsFixed(2)}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                if (subjects.isEmpty)
+                  pw.Text('No subjects')
+                else
+                  pw.TableHelper.fromTextArray(
+                    headers: const ['Subject', 'Credits', 'Grade', 'Points'],
+                    data: subjects.map((s) {
+                      final grade = s['grade'] as String;
+                      final credits = (s['credits'] as num?)?.toDouble() ?? 0.0;
+                      final points = (gradePoints[grade] ?? 0.0);
+                      return [
+                        (s['name'] ?? '').toString(),
+                        credits.toStringAsFixed(1),
+                        grade,
+                        points.toStringAsFixed(1),
+                      ];
+                    }).toList(),
+                    border: pw.TableBorder.all(color: PdfColors.grey400),
+                    headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    headerDecoration:
+                        const pw.BoxDecoration(color: PdfColors.grey300),
+                    cellAlignment: pw.Alignment.centerLeft,
+                    cellHeight: 28,
+                  ),
+                pw.SizedBox(height: 16),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<String> _savePdfLocally() async {
+    final bytes = await _generatePdfBytes();
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(
+      '${dir.path}/ogpa_result_${widget.name}_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    );
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
+
+  Future<void> _printPdf() async {
+    final bytes = await _generatePdfBytes();
+    await Printing.layoutPdf(onLayout: (format) async => bytes);
+  }
+
+  void _showSavedPathSnack(String title, String path) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$title\n$path'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
+  Future<void> _openToolsSheet() async {
+    final cs = Theme.of(context).colorScheme;
+
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: cs.surface,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calculate_outlined),
+                  title: const Text('Use weighted level GPA mode'),
+                  subtitle: const Text(
+                    'Off = normal credit-weighted OGPA\nOn = level GPA × level weight',
+                  ),
+                  trailing: Switch(
+                    value: useLevelWeights,
+                    onChanged: (value) async {
+                      setState(() => useLevelWeights = value);
+                      await _saveOgpaPrefs();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      final path = await _saveBackupJsonLocally();
+                      _showSavedPathSnack('Backup JSON saved', path);
+                    },
+                    icon: const Icon(Icons.backup_outlined),
+                    label: const Text('Backup Local JSON File'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      final path = await _savePdfLocally();
+                      _showSavedPathSnack('PDF saved locally', path);
+                    },
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Save Result as PDF'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await _printPdf();
+                    },
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text('Print PDF'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +937,6 @@ class _OGPAHomeState extends State<OGPAHome> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // 1. Modern AppBar
           SliverAppBar.large(
             pinned: true,
             expandedHeight: 120,
@@ -598,6 +954,11 @@ class _OGPAHomeState extends State<OGPAHome> {
             ),
             actions: [
               IconButton(
+                onPressed: _openToolsSheet,
+                icon: const Icon(Icons.tune_rounded),
+                tooltip: 'Tools & Export',
+              ),
+              IconButton(
                 onPressed: _signOut,
                 icon: const Icon(Icons.logout_rounded),
                 tooltip: 'Sign out',
@@ -605,22 +966,20 @@ class _OGPAHomeState extends State<OGPAHome> {
               const SizedBox(width: 8),
             ],
           ),
-
-          // 2. Scorecard Area
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
               child: Column(
                 children: [
                   _buildMainScoreCard(ogpa, totalCredits, cs),
                   const SizedBox(height: 12),
                   _buildInsightCard(ogpa, totalCredits, cs),
+                  const SizedBox(height: 12),
+                  _buildModeCard(cs),
                 ],
               ),
             ),
           ),
-
-          // 3. Level Lists
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverList(
@@ -630,63 +989,70 @@ class _OGPAHomeState extends State<OGPAHome> {
               ),
             ),
           ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
+          const SliverToBoxAdapter(child: SizedBox(height: 42)),
         ],
       ),
     );
   }
 
-  // --- Widgets ---
-
   Widget _buildMainScoreCard(double ogpa, double credits, ColorScheme cs) {
     final statusColor = _classColor(ogpa);
-    // Use a translucent shade for the track behind the progress
-    final trackColor = cs.onPrimaryContainer.withOpacity(0.2);
+    final trackColor = cs.onPrimaryContainer.withOpacity(0.16);
     final progressColor = cs.onPrimaryContainer;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
-      ),
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final glow = 8 + (_pulseController.value * 10);
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                cs.primaryContainer,
+                cs.primaryContainer.withOpacity(0.9),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withOpacity(0.12),
+                blurRadius: glow,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left Side: Content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   'Academic Standing',
                   style: TextStyle(
-                    color: cs.onPrimaryContainer.withOpacity(0.7),
+                    color: cs.onPrimaryContainer.withOpacity(0.72),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Content Column for badges
                 Wrap(
                   direction: Axis.vertical,
                   spacing: 12,
                   children: [
-                    // Class Status Badge
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: cs.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -694,8 +1060,11 @@ class _OGPAHomeState extends State<OGPAHome> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.workspace_premium_rounded,
-                              size: 18, color: statusColor),
+                          Icon(
+                            Icons.workspace_premium_rounded,
+                            size: 18,
+                            color: statusColor,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             _classLabel(ogpa),
@@ -708,20 +1077,41 @@ class _OGPAHomeState extends State<OGPAHome> {
                         ],
                       ),
                     ),
-
-                    // Credits Badge
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: cs.surface.withOpacity(0.5),
+                        color: cs.surface.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _funStatus(ogpa),
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surface.withOpacity(0.55),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.bar_chart_rounded,
-                              size: 18, color: cs.onSurface.withOpacity(0.7)),
+                          Icon(
+                            Icons.bar_chart_rounded,
+                            size: 18,
+                            color: cs.onSurface.withOpacity(0.72),
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             '${credits.toStringAsFixed(1)} Credits',
@@ -734,61 +1124,80 @@ class _OGPAHomeState extends State<OGPAHome> {
                         ],
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surface.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _modeLabel(),
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-
           const SizedBox(width: 16),
-
-          // Right Side: Circular Indicator with OGPA inside
-          SizedBox(
-            height: 110,
-            width: 110,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Background Track
-                CircularProgressIndicator(
-                  value: 1.0,
-                  color: trackColor,
-                  strokeWidth: 10,
-                ),
-                // Progress
-                CircularProgressIndicator(
-                  value: (ogpa / 4).clamp(0.0, 1.0),
-                  color: progressColor,
-                  strokeCap: StrokeCap.round,
-                  strokeWidth: 10,
-                ),
-                // Text Inside
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        ogpa.toStringAsFixed(2),
-                        style: TextStyle(
-                          color: cs.onPrimaryContainer,
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          height: 1.0,
-                        ),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: (ogpa / 4).clamp(0.0, 1.0)),
+            duration: const Duration(milliseconds: 900),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, _) {
+              return SizedBox(
+                height: 116,
+                width: 116,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: 1.0,
+                      color: trackColor,
+                      strokeWidth: 10,
+                    ),
+                    CircularProgressIndicator(
+                      value: value,
+                      color: progressColor,
+                      strokeCap: StrokeCap.round,
+                      strokeWidth: 10,
+                    ),
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            ogpa.toStringAsFixed(2),
+                            style: TextStyle(
+                              color: cs.onPrimaryContainer,
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              height: 1,
+                            ),
+                          ),
+                          Text(
+                            'OGPA',
+                            style: TextStyle(
+                              color: cs.onPrimaryContainer.withOpacity(0.65),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'OGPA',
-                        style: TextStyle(
-                          color: cs.onPrimaryContainer.withOpacity(0.6),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -796,34 +1205,61 @@ class _OGPAHomeState extends State<OGPAHome> {
   }
 
   Widget _buildInsightCard(double ogpa, double credits, ColorScheme cs) {
-    if (ogpa == 0) return const SizedBox.shrink();
+    if (ogpa == 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(0.32),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: cs.outline.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.menu_book_rounded, size: 20, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Add your subjects level by level. Your OGPA summary will appear here.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     double pointsNeeded = 0;
     String nextText;
     IconData icon = Icons.trending_up;
 
     if (ogpa >= 3.7) {
-      nextText = 'Excellent work. Maintain your current performance.';
+      nextText =
+          'Excellent work. Maintain this performance and protect your class standing.';
       icon = Icons.star_rounded;
     } else if (ogpa >= 3.3) {
       pointsNeeded = ((3.7 - ogpa) * credits).clamp(0, double.infinity);
       nextText =
-          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for First Class.';
+          'You need about ${pointsNeeded.toStringAsFixed(2)} more GPA points to reach First Class.';
     } else if (ogpa >= 3.0) {
       pointsNeeded = ((3.3 - ogpa) * credits).clamp(0, double.infinity);
       nextText =
-          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Upper.';
+          'You need about ${pointsNeeded.toStringAsFixed(2)} more GPA points to reach Second Upper.';
     } else {
       pointsNeeded = ((3.0 - ogpa) * credits).clamp(0, double.infinity);
       nextText =
-          'You need approx. ${pointsNeeded.toStringAsFixed(2)} more GPA points for Second Lower.';
+          'You need about ${pointsNeeded.toStringAsFixed(2)} more GPA points to reach Second Lower.';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(16),
+        color: cs.surfaceContainerHighest.withOpacity(0.32),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cs.outline.withOpacity(0.1)),
       ),
       child: Row(
@@ -834,10 +1270,50 @@ class _OGPAHomeState extends State<OGPAHome> {
             child: Text(
               nextText,
               style: TextStyle(
-                  fontSize: 13,
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w500),
+                fontSize: 13,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeCard(ColorScheme cs) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.32),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outline.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            useLevelWeights ? Icons.balance_rounded : Icons.calculate_rounded,
+            color: cs.primary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              useLevelWeights
+                  ? 'Weighted level mode is ON. Included levels use their own saved weights in real time.'
+                  : 'Normal credit-weighted mode is ON. Level weights stay saved, but are ignored in this mode.',
+              style: TextStyle(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Switch(
+            value: useLevelWeights,
+            onChanged: (value) async {
+              setState(() => useLevelWeights = value);
+              await _saveOgpaPrefs();
+            },
           ),
         ],
       ),
@@ -856,78 +1332,49 @@ class _OGPAHomeState extends State<OGPAHome> {
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
-            initiallyExpanded: levelIndex == 0 && subjects.isEmpty,
+            initiallyExpanded: levelIndex == 0,
             tilePadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            // Leading: Level Label (e.g., L1)
-            leading: Container(
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            leading: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 'L${levelIndex + 1}',
                 style: TextStyle(
-                    color: color, fontWeight: FontWeight.w800, fontSize: 16),
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
               ),
             ),
             title: Text(
               'Level ${levelIndex + 1}',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            // Subtitle logic: Level 1 shows message only when excluded
             subtitle: Text(
-              levelIndex == 0
-                  ? (includeLevel1InOGPA
-                      ? '${subjects.length} Subject(s)'
-                      : 'Not counted in final OGPA')
-                  : '${subjects.length} Subject(s)',
+              includeLevelsInOgpa[levelIndex]
+                  ? '${subjects.length} Subject(s) • Weight ${_formatWeight(levelWeights[levelIndex])}'
+                  : 'Excluded from final OGPA • Weight ${_formatWeight(levelWeights[levelIndex])}',
               style: TextStyle(
-                color: levelIndex == 0 && !includeLevel1InOGPA
-                    ? cs.outline
-                    : cs.onSurfaceVariant,
+                color: includeLevelsInOgpa[levelIndex]
+                    ? cs.onSurfaceVariant
+                    : cs.outline,
                 fontSize: 13,
               ),
             ),
-            // Trailing: Circular GPA indicator for this level
-            trailing: _buildLevelGpaIndicator(gpa, cs),
+            trailing: _buildLevelGpaIndicator(gpa, cs, color),
             childrenPadding:
                 const EdgeInsets.only(left: 16, right: 16, bottom: 16),
             children: [
-              // Toggle row only for Level 1
-              if (levelIndex == 0)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Include Level 1 GPA in final OGPA',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: includeLevel1InOGPA,
-                        onChanged: (value) async {
-                          setState(() {
-                            includeLevel1InOGPA = value;
-                          });
-                          await _saveIncludeLevel1Pref();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
+              _buildLevelOptions(levelIndex),
+              const SizedBox(height: 8),
               if (subjects.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(22),
                   child: Center(
                     child: Text(
                       'No subjects yet',
@@ -937,10 +1384,8 @@ class _OGPAHomeState extends State<OGPAHome> {
                 )
               else
                 ...subjects.asMap().entries.map((entry) {
-                  return _buildSubjectRow(
-                      levelIndex, entry.key, entry.value);
+                  return _buildSubjectRow(levelIndex, entry.key, entry.value);
                 }),
-
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
@@ -950,8 +1395,11 @@ class _OGPAHomeState extends State<OGPAHome> {
                   label: const Text('Add Subject'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: cs.primary,
-                    side: BorderSide(color: cs.outline.withOpacity(0.3)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: BorderSide(color: cs.outline.withOpacity(0.28)),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
               ),
@@ -962,42 +1410,103 @@ class _OGPAHomeState extends State<OGPAHome> {
     );
   }
 
-  // Circular Indicator for individual levels
-  Widget _buildLevelGpaIndicator(double gpa, ColorScheme cs) {
-    // Determine color based on standard GPA cutoffs
-    Color color;
-    if (gpa >= 3.7) {
-      color = const Color(0xFF10B981); // Green
-    } else if (gpa >= 3.0) {
-      color = const Color(0xFFF59E0B); // Amber
-    } else if (gpa >= 2.0) {
-      color = const Color(0xFFF97316); // Orange
-    } else {
-      color = const Color(0xFFEF4444); // Red
-    }
+  Widget _buildLevelOptions(int levelIndex) {
+    final cs = Theme.of(context).colorScheme;
 
-    // Value between 0.0 and 1.0 (assuming max GPA is 4.0)
-    final double value = (gpa / 4.0).clamp(0.0, 1.0);
-
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: Stack(
-        alignment: Alignment.center,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.22),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
         children: [
-          CircularProgressIndicator(
-            value: value,
-            strokeWidth: 4,
-            backgroundColor: cs.surfaceContainerHighest,
-            color: color,
-            strokeCap: StrokeCap.round,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Include Level ${levelIndex + 1} in final OGPA',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Switch(
+                value: includeLevelsInOgpa[levelIndex],
+                onChanged: (value) async {
+                  setState(() {
+                    includeLevelsInOgpa[levelIndex] = value;
+                  });
+                  await _saveOgpaPrefs();
+                },
+              ),
+            ],
           ),
-          Text(
-            gpa.toStringAsFixed(2),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  'Level weight',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 132,
+                child: TextField(
+                  controller: weightControllers[levelIndex],
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Weight',
+                    hintText: '1.00',
+                    isDense: true,
+                  ),
+                  onChanged: (value) async {
+                    await _handleWeightChanged(levelIndex, value);
+                  },
+                  onTap: () {
+                    weightControllers[levelIndex].selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: weightControllers[levelIndex].text.length,
+                    );
+                  },
+                  onSubmitted: (_) async {
+                    await _normalizeWeightField(levelIndex);
+                    if (!mounted) return;
+                    FocusScope.of(context).unfocus();
+                  },
+                  onEditingComplete: () async {
+                    await _normalizeWeightField(levelIndex);
+                    if (!mounted) return;
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              useLevelWeights
+                  ? 'This weight is active right now and updates OGPA immediately.'
+                  : 'This weight is saved and will be used when weighted mode is turned on.',
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.outline,
+              ),
             ),
           ),
         ],
@@ -1005,25 +1514,80 @@ class _OGPAHomeState extends State<OGPAHome> {
     );
   }
 
+  Widget _buildLevelGpaIndicator(double gpa, ColorScheme cs, Color accent) {
+    final double value = (gpa / 4.0).clamp(0.0, 1.0);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value),
+      duration: const Duration(milliseconds: 850),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedValue, child) {
+        return SizedBox(
+          width: 48,
+          height: 48,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: 1,
+                strokeWidth: 4,
+                backgroundColor: cs.surfaceContainerHighest,
+                color: cs.surfaceContainerHighest,
+              ),
+              CircularProgressIndicator(
+                value: animatedValue,
+                strokeWidth: 4,
+                color: accent,
+                strokeCap: StrokeCap.round,
+              ),
+              Text(
+                gpa.toStringAsFixed(2),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurface,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSubjectRow(
-      int levelIndex, int index, Map<String, dynamic> subject) {
-    final bool isEditing = subject['isEditing'] == true;
+    int levelIndex,
+    int index,
+    Map<String, dynamic> subject,
+  ) {
+    final isEditing = subject['isEditing'] == true;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, animation) {
+        final offset = Tween<Offset>(
+          begin: const Offset(0, 0.05),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: offset, child: child),
+        );
+      },
       child: isEditing
           ? _buildEditSubjectMode(levelIndex, index, subject)
           : _buildViewSubjectMode(levelIndex, index, subject),
     );
   }
 
-  // --- View Mode Widget (Clean List Tile) ---
   Widget _buildViewSubjectMode(
-      int level, int index, Map<String, dynamic> subject) {
+    int level,
+    int index,
+    Map<String, dynamic> subject,
+  ) {
     final cs = Theme.of(context).colorScheme;
     final grade = subject['grade'] as String;
 
-    // Determine grade color
     Color gradeColor = cs.primary;
     if (grade.startsWith('A')) {
       gradeColor = const Color(0xFF10B981);
@@ -1037,11 +1601,11 @@ class _OGPAHomeState extends State<OGPAHome> {
 
     return Container(
       key: ValueKey('view_${subject['id']}'),
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
+        color: cs.surfaceContainerHighest.withOpacity(0.28),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
@@ -1052,23 +1616,27 @@ class _OGPAHomeState extends State<OGPAHome> {
                 Text(
                   subject['name'],
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 15),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
                 ),
+                const SizedBox(height: 3),
                 Text(
-                  '${subject['credits']} Credits',
+                  '${(subject['credits'] as num?)?.toDouble().toStringAsFixed(1) ?? '0.0'} Credits',
                   style: TextStyle(
-                      fontSize: 12, color: cs.onSurfaceVariant),
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
           ),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
             decoration: BoxDecoration(
               color: gradeColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: gradeColor.withOpacity(0.2)),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: gradeColor.withOpacity(0.18)),
             ),
             child: Text(
               grade,
@@ -1078,8 +1646,7 @@ class _OGPAHomeState extends State<OGPAHome> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          // Actions
+          const SizedBox(width: 10),
           MenuAnchor(
             builder: (context, controller, child) {
               return IconButton(
@@ -1090,26 +1657,28 @@ class _OGPAHomeState extends State<OGPAHome> {
                     controller.open();
                   }
                 },
-                icon: Icon(Icons.more_vert,
-                    size: 20, color: cs.outline),
+                icon: Icon(Icons.more_vert, size: 20, color: cs.outline),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               );
             },
             menuChildren: [
               MenuItemButton(
-                onPressed: () =>
-                    setState(() => subject['isEditing'] = true),
-                leadingIcon:
-                    const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () => setState(() => subject['isEditing'] = true),
+                leadingIcon: const Icon(Icons.edit_outlined, size: 18),
                 child: const Text('Edit'),
               ),
               MenuItemButton(
                 onPressed: () => _deleteSubject(level, index),
-                leadingIcon: const Icon(Icons.delete_outline,
-                    size: 18, color: Colors.red),
-                child: const Text('Delete',
-                    style: TextStyle(color: Colors.red)),
+                leadingIcon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: Colors.red,
+                ),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
               ),
             ],
           ),
@@ -1118,25 +1687,27 @@ class _OGPAHomeState extends State<OGPAHome> {
     );
   }
 
-  // --- Edit Mode Widget (Form) ---
   Widget _buildEditSubjectMode(
-      int level, int index, Map<String, dynamic> subject) {
+    int level,
+    int index,
+    Map<String, dynamic> subject,
+  ) {
     final cs = Theme.of(context).colorScheme;
+
     return Container(
-      key: ValueKey('edit_${subject['id']}'),
+      key: ValueKey('edit_${subject['id'] ?? 'new_$level$index'}'),
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: cs.primary.withOpacity(0.3), width: 1.5),
+        border: Border.all(color: cs.primary.withOpacity(0.28), width: 1.4),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.05),
+            color: cs.shadow.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -1166,8 +1737,9 @@ class _OGPAHomeState extends State<OGPAHome> {
                     prefixIcon: Icon(Icons.numbers, size: 20),
                     isDense: true,
                   ),
-                  onChanged: (val) =>
-                      subject['credits'] = double.tryParse(val) ?? 0,
+                  onChanged: (val) {
+                    subject['credits'] = double.tryParse(val) ?? 0.0;
+                  },
                 ),
               ),
               const SizedBox(width: 12),
@@ -1182,11 +1754,10 @@ class _OGPAHomeState extends State<OGPAHome> {
                         EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     isDense: true,
                   ),
-                  items: gradePoints.keys.map((g) {
-                    return DropdownMenuItem(value: g, child: Text(g));
-                  }).toList(),
-                  onChanged: (val) =>
-                      setState(() => subject['grade'] = val),
+                  items: gradePoints.keys
+                      .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                      .toList(),
+                  onChanged: (val) => setState(() => subject['grade'] = val),
                 ),
               ),
             ],
@@ -1197,14 +1768,11 @@ class _OGPAHomeState extends State<OGPAHome> {
             children: [
               TextButton(
                 onPressed: () {
-                  // If it's a new empty subject (no name), delete it on cancel
                   if (subject['id'] == null &&
-                      (subject['name'] == '' ||
-                          subject['name'] == null)) {
+                      ((subject['name'] ?? '').toString().trim().isEmpty)) {
                     _deleteSubject(level, index);
                   } else {
-                    setState(
-                        () => subject['isEditing'] = false);
+                    setState(() => subject['isEditing'] = false);
                   }
                 },
                 child: const Text('Cancel'),
@@ -1219,7 +1787,7 @@ class _OGPAHomeState extends State<OGPAHome> {
                 label: const Text('Save'),
               ),
             ],
-          )
+          ),
         ],
       ),
     );

@@ -1,7 +1,7 @@
 name: ogpa_calculator
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.1.0
+version: 0.1.0+3
 
 environment:
   sdk: ^3.10.3
@@ -9,8 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.2.2
-  
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  pdf: ^3.11.3
+  printing: ^5.14.2
   http: ^1.2.0
 
 
